@@ -1,5 +1,7 @@
 import { createQuestionnaires } from "./questionnaire.js";
 
+const ANSWERS_STORAGE_KEY = "questionnaire.savedAnswers";
+
 const state = {
     questionnaires: [],
     activeQuestionnaire: null,
@@ -17,6 +19,13 @@ const elements = {
     resultMeter: document.querySelector("#resultMeter"),
     resultInterpretation: document.querySelector("#resultInterpretation"),
     resultDetails: document.querySelector("#resultDetails"),
+};
+
+const mobileScrollBackState = {
+    button: null,
+    mediaQuery: window.matchMedia("(max-width: 900px)"),
+    firstQuestion: null,
+    scrollHandler: null,
 };
 
 init();
@@ -43,8 +52,8 @@ async function init() {
 
         state.activeQuestionnaire = state.questionnaires[0];
         elements.questionnaireSelect.value = state.activeQuestionnaire.id;
-        renderActiveQuestionnaire();
-        setStatus("", "info");
+        const renderResult = renderActiveQuestionnaire();
+        setRestoreStatus(renderResult);
     } catch (error) {
         renderLoadError(error);
         setStatus(error instanceof Error ? error.message : "Προέκυψε σφάλμα κατά τη φόρτωση.", "error");
@@ -62,10 +71,12 @@ function attachGlobalListeners() {
         }
 
         state.activeQuestionnaire = nextQuestionnaire;
-        renderActiveQuestionnaire();
+        const renderResult = renderActiveQuestionnaire();
         hideResult();
-        setStatus("", "info");
+        setRestoreStatus(renderResult);
     });
+
+    mobileScrollBackState.mediaQuery.addEventListener("change", syncMobileScrollBackButton);
 }
 
 function populateQuestionnaireSelect() {
@@ -85,7 +96,7 @@ function renderActiveQuestionnaire() {
     const questionnaire = state.activeQuestionnaire;
 
     if (!questionnaire) {
-        return;
+        return null;
     }
 
     updateSummary(questionnaire);
@@ -169,13 +180,16 @@ function renderActiveQuestionnaire() {
 
     const submitButton = document.createElement("button");
     submitButton.type = "submit";
-    submitButton.className = "button button-primary";
+    submitButton.className = "button button-primary mt-3";
     submitButton.textContent = "Υπολογισμός αποτελέσματος";
 
     const resetButton = document.createElement("button");
-    resetButton.type = "reset";
+    resetButton.type = "button";
     resetButton.className = "button button-secondary";
     resetButton.textContent = "Καθαρισμός απαντήσεων";
+    resetButton.addEventListener("click", () => {
+        clearQuestionnaireAnswers(form, questionnaire, progressText);
+    });
 
     actions.append(submitButton, resetButton);
     form.append(actions);
@@ -194,21 +208,113 @@ function renderActiveQuestionnaire() {
         handleFormSubmit(form, questionnaire, progressText);
     });
 
-    form.addEventListener("reset", () => {
-        window.requestAnimationFrame(() => {
-            updateProgress(form, questionnaire, progressText);
-            hideResult();
-            setStatus("Οι απαντήσεις καθαρίστηκαν.", "info");
-        });
-    });
-
+    const restoredAnswerCount = restoreSavedAnswers(form, questionnaire);
     updateProgress(form, questionnaire, progressText);
     wrapper.append(head, form);
     elements.questionnaireMount.append(wrapper);
+    syncMobileScrollBackButton();
+    return {
+        form,
+        progressText,
+        questionnaire,
+        restoredAnswerCount,
+    };
+}
+
+function syncMobileScrollBackButton() {
+    const isMobileViewport = mobileScrollBackState.mediaQuery.matches;
+
+    if (!isMobileViewport) {
+        detachScrollBackTracking();
+        hideScrollBackButton();
+        return;
+    }
+
+    const firstQuestion = elements.questionnaireMount.querySelector(".question-card");
+
+    if (!firstQuestion) {
+        detachScrollBackTracking();
+        hideScrollBackButton();
+        return;
+    }
+
+    const button = ensureScrollBackButton();
+    mobileScrollBackState.firstQuestion = firstQuestion;
+
+    if (!mobileScrollBackState.scrollHandler) {
+        mobileScrollBackState.scrollHandler = () => {
+            updateScrollBackButtonVisibility();
+        };
+        window.addEventListener("scroll", mobileScrollBackState.scrollHandler, { passive: true });
+        window.addEventListener("resize", mobileScrollBackState.scrollHandler);
+    }
+
+    updateScrollBackButtonVisibility(button);
+}
+
+function ensureScrollBackButton() {
+    if (mobileScrollBackState.button) {
+        return mobileScrollBackState.button;
+    }
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "scroll-back-button";
+    button.hidden = true;
+    button.setAttribute("aria-label", "Επιστροφή στην επιλογή ερωτηματολογίου");
+    button.title = "Επιστροφή στην επιλογή ερωτηματολογίου";
+    button.innerHTML = [
+        '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">',
+        '<path d="M12 19V6M6.5 11.5L12 6l5.5 5.5" />',
+        "</svg>",
+    ].join("");
+    button.addEventListener("click", () => {
+        elements.questionnaireSelect.scrollIntoView({ behavior: "smooth", block: "center" });
+        window.setTimeout(() => elements.questionnaireSelect.focus({ preventScroll: true }), 280);
+    });
+
+    document.body.append(button);
+    mobileScrollBackState.button = button;
+    return button;
+}
+
+function hideScrollBackButton() {
+    if (!mobileScrollBackState.button) {
+        return;
+    }
+
+    mobileScrollBackState.button.hidden = true;
+    mobileScrollBackState.button.classList.remove("is-visible");
+}
+
+function updateScrollBackButtonVisibility(button = mobileScrollBackState.button) {
+    if (!button || !mobileScrollBackState.firstQuestion || !mobileScrollBackState.mediaQuery.matches) {
+        hideScrollBackButton();
+        return;
+    }
+
+    const firstQuestionTop = mobileScrollBackState.firstQuestion.getBoundingClientRect().top + window.scrollY;
+    const revealOffset = window.innerHeight * 0.22;
+    const shouldShow = window.scrollY >= firstQuestionTop - revealOffset;
+
+    button.classList.toggle("is-visible", shouldShow);
+    button.hidden = !shouldShow;
+}
+
+function detachScrollBackTracking() {
+    if (mobileScrollBackState.scrollHandler) {
+        window.removeEventListener("scroll", mobileScrollBackState.scrollHandler);
+        window.removeEventListener("resize", mobileScrollBackState.scrollHandler);
+        mobileScrollBackState.scrollHandler = null;
+    }
+
+    mobileScrollBackState.firstQuestion = null;
 }
 
 function handleFormSubmit(form, questionnaire, progressText) {
+    const selectedAnswers = getSelectedAnswers(form, questionnaire);
     const missingQuestionIds = getMissingQuestionIds(form, questionnaire);
+    saveStoredAnswers(questionnaire.id, selectedAnswers);
     updateProgress(form, questionnaire, progressText);
 
     if (missingQuestionIds.length > 0) {
@@ -226,13 +332,8 @@ function handleFormSubmit(form, questionnaire, progressText) {
         return;
     }
 
-    const formData = new FormData(form);
-    const answersByQuestionId = Object.fromEntries(
-        questionnaire.questions.map((question) => [question.id, Number(formData.get(question.id))]),
-    );
-
     try {
-        const result = questionnaire.evaluate(answersByQuestionId);
+        const result = questionnaire.evaluate(selectedAnswers);
         presentResult(questionnaire, result);
         setStatus("Το αποτέλεσμα υπολογίστηκε παρακάτω.", "success");
     } catch (error) {
@@ -249,11 +350,136 @@ function getMissingQuestionIds(form, questionnaire) {
         .map((question) => question.id);
 }
 
+function getSelectedAnswers(form, questionnaire) {
+    const formData = new FormData(form);
+
+    return Object.fromEntries(
+        questionnaire.questions
+            .map((question) => {
+                const rawValue = formData.get(question.id);
+
+                if (rawValue === null) {
+                    return null;
+                }
+
+                return [question.id, Number(rawValue)];
+            })
+            .filter((entry) => entry !== null),
+    );
+}
+
 function updateProgress(form, questionnaire, progressText) {
     const answeredCount = questionnaire.questions.length - getMissingQuestionIds(form, questionnaire).length;
     progressText.textContent = answeredCount === questionnaire.questions.length
         ? `Όλες οι απαντήσεις συμπληρώθηκαν (${answeredCount}/${questionnaire.questions.length}).`
         : `Απαντήθηκαν ${answeredCount} από ${questionnaire.questions.length} ερωτήσεις.`;
+}
+
+function restoreSavedAnswers(form, questionnaire) {
+    const savedAnswers = getStoredAnswers(questionnaire.id);
+    let restoredAnswerCount = 0;
+
+    questionnaire.questions.forEach((question) => {
+        const savedValue = savedAnswers[question.id];
+
+        if (!question.hasValue(Number(savedValue))) {
+            return;
+        }
+
+        const matchingInput = form.querySelector(
+            `input[name="${question.id}"][value="${String(savedValue)}"]`,
+        );
+
+        if (!matchingInput) {
+            return;
+        }
+
+        matchingInput.checked = true;
+        restoredAnswerCount += 1;
+    });
+
+    return restoredAnswerCount;
+}
+
+function clearQuestionnaireAnswers(form, questionnaire, progressText) {
+    form.reset();
+    clearStoredAnswers(questionnaire.id);
+    updateProgress(form, questionnaire, progressText);
+    hideResult();
+    setStatus("Οι απαντήσεις καθαρίστηκαν.", "info");
+}
+
+function getStoredAnswers(questionnaireId) {
+    const storedAnswersByQuestionnaire = getAllStoredAnswers();
+    const storedAnswers = storedAnswersByQuestionnaire[questionnaireId];
+
+    return storedAnswers && typeof storedAnswers === "object" ? storedAnswers : {};
+}
+
+function saveStoredAnswers(questionnaireId, answersByQuestionId) {
+    const storedAnswersByQuestionnaire = getAllStoredAnswers();
+    storedAnswersByQuestionnaire[questionnaireId] = answersByQuestionId;
+
+    persistStoredAnswers(storedAnswersByQuestionnaire);
+}
+
+function clearStoredAnswers(questionnaireId) {
+    const storedAnswersByQuestionnaire = getAllStoredAnswers();
+
+    if (!(questionnaireId in storedAnswersByQuestionnaire)) {
+        return;
+    }
+
+    delete storedAnswersByQuestionnaire[questionnaireId];
+    persistStoredAnswers(storedAnswersByQuestionnaire);
+}
+
+function getAllStoredAnswers() {
+    try {
+        const rawValue = window.sessionStorage.getItem(ANSWERS_STORAGE_KEY);
+
+        if (!rawValue) {
+            return {};
+        }
+
+        const parsedValue = JSON.parse(rawValue);
+        return parsedValue && typeof parsedValue === "object" ? parsedValue : {};
+    } catch {
+        return {};
+    }
+}
+
+function persistStoredAnswers(storedAnswersByQuestionnaire) {
+    try {
+        if (Object.keys(storedAnswersByQuestionnaire).length === 0) {
+            window.sessionStorage.removeItem(ANSWERS_STORAGE_KEY);
+            return;
+        }
+
+        window.sessionStorage.setItem(ANSWERS_STORAGE_KEY, JSON.stringify(storedAnswersByQuestionnaire));
+    } catch {
+        // Ignore storage failures so the questionnaire remains usable.
+    }
+}
+
+function setRestoreStatus(renderResult) {
+    if (renderResult?.restoredAnswerCount > 0) {
+        const message = document.createElement("span");
+        message.textContent = `Ανακτήθηκαν ${renderResult.restoredAnswerCount} αποθηκευμένες απαντήσεις από την τρέχουσα συνεδρία.`;
+
+        const clearButton = document.createElement("button");
+        clearButton.type = "button";
+        clearButton.className = "button button-secondary status-message-action";
+        clearButton.textContent = "Καθαρισμός απαντήσεων";
+        clearButton.addEventListener("click", () => {
+            clearQuestionnaireAnswers(renderResult.form, renderResult.questionnaire, renderResult.progressText);
+        });
+
+        setStatusContent([message, clearButton], "info");
+        return;
+    }
+
+    setStatus("", "info");
 }
 
 function updateSummary(questionnaire) {
@@ -311,12 +537,16 @@ function renderLoadError(error) {
 function setStatus(message, tone = "info") {
     if (!message) {
         elements.statusMessage.hidden = true;
-        elements.statusMessage.textContent = "";
+        elements.statusMessage.replaceChildren();
         delete elements.statusMessage.dataset.tone;
         return;
     }
 
+    setStatusContent([document.createTextNode(message)], tone);
+}
+
+function setStatusContent(contentNodes, tone = "info") {
     elements.statusMessage.hidden = false;
     elements.statusMessage.dataset.tone = tone;
-    elements.statusMessage.textContent = message;
+    elements.statusMessage.replaceChildren(...contentNodes);
 }
