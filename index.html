@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="dark">
+    <title>Ερωτηματολόγιο Ψυχολογικής Κατάστασης</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Commissioner:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./styles.css">
+    <script type="module" src="./app.js"></script>
+</head>
+<body>
+    <div class="page-orb page-orb-left" aria-hidden="true"></div>
+    <div class="page-orb page-orb-right" aria-hidden="true"></div>
+
+    <main class="app-shell">
+        <header class="hero card">
+            <p class="eyebrow">Dark mode μόνο • Client-side μόνο</p>
+            <div class="hero-copy">
+                <div>
+                    <h1>Ερωτηματολόγιο αξιολόγησης ψυχολογικής κατάστασης</h1>
+                    <p>
+                        Διάλεξε ένα σύντομο ερωτηματολόγιο, απάντησε στις ερωτήσεις και δες ένα
+                        ενδεικτικό αποτέλεσμα από 0 έως 100.
+                    </p>
+                </div>
+                <p class="hero-note">
+                    Το αποτέλεσμα είναι πληροφοριακό και δεν αποθηκεύεται κανένα ιστορικό.
+                </p>
+            </div>
+        </header>
+
+        <section class="layout-grid">
+            <aside class="card selector-panel">
+                <div class="panel-head">
+                    <p class="section-kicker">Βήμα 1</p>
+                    <h2>Διάλεξε ερωτηματολόγιο</h2>
+                </div>
+
+                <label class="field-label" for="questionnaireSelect">Διαθέσιμα ερωτηματολόγια</label>
+                <select id="questionnaireSelect" class="input-shell" disabled>
+                    <option>Φόρτωση...</option>
+                </select>
+
+                <div id="questionnaireSummary" class="summary-box" aria-live="polite"></div>
+
+                <div class="mini-note">
+                    <strong>Σημείωση:</strong>
+                    Οι ερωτήσεις είναι ενδεικτικές ώστε να δοκιμαστεί ο μηχανισμός φόρτωσης,
+                    απάντησης και κανονικοποίησης της βαθμολογίας.
+                </div>
+            </aside>
+
+            <section class="content-stack">
+                <section class="card content-card">
+                    <div id="statusMessage" class="status-message" hidden aria-live="polite"></div>
+                    <div id="questionnaireMount" class="questionnaire-mount">
+                        <div class="empty-state">
+                            <h2>Γίνεται προετοιμασία</h2>
+                            <p>Η εφαρμογή φορτώνει τα ερωτηματολόγια από το αρχείο JSON.</p>
+                        </div>
+                    </div>
+                </section>
+
+                <section id="resultCard" class="card result-card is-hidden" aria-live="polite">
+                    <div class="result-header">
+                        <p id="resultTag" class="result-tag"></p>
+                        <h2 id="resultTitle"></h2>
+                    </div>
+
+                    <div class="score-row">
+                        <p id="resultScore" class="result-score">0/100</p>
+                        <p class="score-caption">Κανονικοποιημένη ένδειξη</p>
+                    </div>
+
+                    <div class="meter-track" aria-hidden="true">
+                        <div id="resultMeter" class="meter-fill"></div>
+                    </div>
+
+                    <p id="resultInterpretation" class="result-interpretation"></p>
+                    <p id="resultDetails" class="result-details"></p>
+                    <p class="result-disclaimer">
+                        Η ένδειξη δεν αποτελεί διάγνωση. Σε επόμενο στάδιο μπορεί να αντικατασταθεί
+                        από αυστηρότερο, επιστημονικά πιο ακριβές περιεχόμενο.
+                    </p>
+                </section>
+            </section>
+        </section>
+    </main>
+
+</body>
+</html>
