@@ -34,7 +34,7 @@ async function init() {
     setStatus("Γίνεται φόρτωση των ερωτηματολογίων...", "info");
 
     try {
-        const response = await fetch("./questionnaire.json", { cache: "no-store" });
+        const response = await fetch(new URL("./questionnaire.json", import.meta.url), { cache: "no-store" });
 
         if (!response.ok) {
             throw new Error("Δεν ήταν δυνατή η φόρτωση του questionnaire.json.");
